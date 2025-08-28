@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Calcular Curva</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: #eef2f5;
+      color: #2c3e50;
+    }
+    #map {
+      width: 100%;
+      height: 65vh;
+      border-bottom: 3px solid #ddd;
+    }
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 6px 14px rgba(0,0,0,.08);
+      padding: 18px;
+      margin: 16px;
+    }
+    .header-panel {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .header-panel h1 {
+      margin: 0;
+      font-size: 1.4rem;
+      color: #2c3e50;
+    }
+    .header-panel .controls {
+      display: flex;
+      gap: 10px;
+    }
+    .header-panel button {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      background: #3498db;
+      color: #fff;
+      font-weight: 600;
+      transition: 0.2s;
+    }
+    .header-panel button:hover {
+      background: #2980b9;
+    }
+    h2 {
+      margin: 16px 0 10px;
+      font-size: 1.1rem;
+      color: #34495e;
+      border-left: 4px solid #3498db;
+      padding-left: 8px;
+    }
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+    .three {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      background: #3498db;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 14px;
+      transition: 0.2s;
+    }
+    .btn:hover {
+      background: #2980b9;
+    }
+    .resultado {
+      margin-top: 14px;
+      padding: 14px;
+      border-radius: 10px;
+      border: 2px solid #3498db44;
+      background: #f9fbfd;
+      line-height: 1.5;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+    .actions button {
+      flex: 1;
+      padding: 12px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      transition: 0.2s;
+    }
+    .pdf {
+      background: #27ae60;
+      color: #fff;
+    }
+    .pdf:hover { background: #1e874b; }
+    .wa {
+      background: #25d366;
+      color: #fff;
+    }
+    .wa:hover { background: #1eb346; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="card">
+    <div class="header-panel">
+      <h1>Calcular Curva</h1>
+      <div class="controls">
+        <button id="btnUndo">Desfazer ponto</button>
+        <button id="btnClear">Limpar</button>
+      </div>
+    </div>
+
+    <h2>Geometria da Curva (3 pontos)</h2>
+    <p style="color:#7f8c8d;font-size:0.9rem;margin-top:0;">
+      Clique 3 pontos no mapa: início, meio (mais afastado) e fim.
+    </p>
+    <div id="geomResults" class="resultado">
+      <p style="color:#95a5a6;">Aguardando pontos no mapa...</p>
+    </div>
+
+    <h2>Velocidade Segura</h2>
+    <div class="grid three">
+      <div>
+        <label for="atrito">Atrito</label>
+        <select id="atrito">
+          <option value="0.7">Asfalto Seco (0.70)</option>
+          <option value="0.5">Asfalto Molhado (0.50)</option>
+          <option value="0.4">Terra Seca (0.40)</option>
+          <option value="0.25">Terra Molhada (0.25)</option>
+        </select>
+      </div>
+      <div>
+        <label for="veiculo">Veículo</label>
+        <select id="veiculo">
+          <option value="1">Padrão</option>
+          <option value="0.9">Pesado</option>
+        </select>
+      </div>
+      <div>
+        <label for="margem">Margem</label>
+        <select id="margem">
+          <option value="0.78">Alta (22%)</option>
+          <option value="0.85">Média (15%)</option>
+          <option value="0.92">Baixa (8%)</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn" id="btnCalc">Calcular</button>
+
+    <div id="resultado" class="resultado">
+      <p style="color:#95a5a6;">Resultados aparecerão aqui.</p>
+    </div>
+
+    <div class="actions">
+      <button class="pdf" id="btnPDF">Gerar PDF</button>
+      <button class="wa" id="btnWA">Compartilhar WhatsApp</button>
+    </div>
+  </div>
+
+  <!-- Leaflet -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <!-- jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <script>
+    let map = L.map('map').setView([-15.78, -47.93], 14);
+
+    // Google Satélite sem API
+    L.tileLayer('http://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+      maxZoom: 20,
+      subdomains:['mt0','mt1','mt2','mt3']
+    }).addTo(map);
+
+    // Buscar localização ao abrir
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(pos=>{
+        const {latitude,longitude}=pos.coords;
+        map.setView([latitude,longitude],17);
+        L.marker([latitude,longitude]).addTo(map).bindPopup("Você está aqui").openPopup();
+      });
+    }
+
+    let points=[], markers=[];
+    function distance(a,b){
+      const R=6371000;
+      const dLat=(b.lat-a.lat)*Math.PI/180, dLng=(b.lng-a.lng)*Math.PI/180;
+      const lat1=a.lat*Math.PI/180, lat2=b.lat*Math.PI/180;
+      const x=dLng*Math.cos((lat1+lat2)/2), y=dLat;
+      return Math.sqrt(x*x+y*y)*R;
+    }
+    function midpoint(a,b){ return {lat:(a.lat+b.lat)/2,lng:(a.lng+b.lng)/2} }
+
+    function calcularGeometria(){
+      const [p1,p2,p3]=points;
+      const c=distance(p1,p3); // corda
+      const s=distance(p2, midpoint(p1,p3)); // sagita
+      const R=(c*c)/(8*s)+s/2; // raio
+      const delta=2*Math.asin(c/(2*R))*(180/Math.PI); // ângulo central
+      const arco=(Math.PI*R*delta)/180; // comprimento arco
+      const grau=5729.58/R; // grau de curva
+      const tang=R*Math.tan((delta/2)*Math.PI/180); // tangente
+      const L=2*R*Math.sin((delta/2)*Math.PI/180); // desenvolvimento
+
+      document.getElementById('geomResults').innerHTML=
+        `<b>Raio (R):</b> ${R.toFixed(2)} m<br>
+         <b>Ângulo central (Δ):</b> ${delta.toFixed(2)}°<br>
+         <b>Grau de curva (D):</b> ${grau.toFixed(2)}°<br>
+         <b>Comprimento do arco:</b> ${arco.toFixed(2)} m<br>
+         <b>Sagita (flecha):</b> ${s.toFixed(2)} m<br>
+         <b>Corda (C):</b> ${c.toFixed(2)} m<br>
+         <b>Tangente (T):</b> ${tang.toFixed(2)} m<br>
+         <b>Desenvolvimento (L):</b> ${L.toFixed(2)} m`;
+
+      return {R,delta,grau,arco,s,c,tang,L};
+    }
+
+    map.on('click', e=>{
+      if(points.length>=3) return;
+      points.push(e.latlng);
+      const mk=L.marker(e.latlng).addTo(map);
+      markers.push(mk);
+      if(points.length===3) calcularGeometria();
+    });
+
+    document.getElementById('btnUndo').onclick=()=>{
+      if(points.length){ map.removeLayer(markers.pop()); points.pop(); document.getElementById('geomResults').innerHTML='<p style="color:#95a5a6;">Aguardando pontos no mapa...</p>'; }
+    };
+    document.getElementById('btnClear').onclick=()=>{
+      markers.forEach(m=>map.removeLayer(m)); points=[]; markers=[]; 
+      document.getElementById('geomResults').innerHTML='<p style="color:#95a5a6;">Aguardando pontos no mapa...</p>';
+      document.getElementById('resultado').innerHTML='<p style="color:#95a5a6;">Resultados aparecerão aqui.</p>';
+    };
+
+    function calcularVelocidade(){
+      if(points.length<3) return;
+      const {R}=calcularGeometria();
+      const atrito=parseFloat(document.getElementById('atrito').value);
+      const veiculo=parseFloat(document.getElementById('veiculo').value);
+      const margem=parseFloat(document.getElementById('margem').value);
+      const g=9.81;
+      let v=Math.sqrt(atrito*g*R)*veiculo*margem;
+      let vKmh=Math.floor((v*3.6)/5)*5;
+      document.getElementById('resultado').innerHTML=`<b>Velocidade Recomendada:</b> ${vKmh} km/h`;
+    }
+    document.getElementById('btnCalc').onclick=calcularVelocidade;
+
+    // PDF
+    document.getElementById('btnPDF').onclick=()=>{
+      const {jsPDF}=window.jspdf;
+      const doc=new jsPDF();
+      doc.text("Calcular Curva - Resultado",10,10);
+      doc.text(document.getElementById('geomResults').innerText,10,20);
+      doc.text(document.getElementById('resultado').innerText,10,120);
+      doc.save("resultado-curva.pdf");
+    };
+
+    // WhatsApp
+    document.getElementById('btnWA').onclick=()=>{
+      const texto=`Calcular Curva:%0A${document.getElementById('geomResults').innerText}%0A${document.getElementById('resultado').innerText}`;
+      window.open(`https://wa.me/?text=${texto}`,'_blank');
+    };
+  </script>
+</body>
+</html>
