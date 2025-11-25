@@ -189,13 +189,28 @@
       subdomains:['mt0','mt1','mt2','mt3']
     }).addTo(map);
 
-    // Buscar localização ao abrir
+    // Localização com alta precisão + rastreamento
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(pos=>{
         const {latitude,longitude}=pos.coords;
         map.setView([latitude,longitude],17);
-        L.marker([latitude,longitude]).addTo(map).bindPopup("Você está aqui").openPopup();
-      });
+        L.marker([latitude,longitude]).addTo(map)
+          .bindPopup("Você está aqui").openPopup();
+      },
+      err=>console.error("Erro ao obter localização:", err),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+
+      navigator.geolocation.watchPosition(pos=>{
+        const {latitude,longitude}=pos.coords;
+        if (!window.liveMarker) {
+          window.liveMarker = L.marker([latitude,longitude], {opacity:0.8}).addTo(map);
+        } else {
+          window.liveMarker.setLatLng([latitude,longitude]);
+        }
+      },
+      err=>console.log(err),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    }
     }
 
     let points=[], markers=[];
