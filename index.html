@@ -3,32 +3,36 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Calcular Curva</title>
+  <title>Calcular Curva (com gravação de movimento)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <style>
     body { margin: 0; font-family: "Segoe UI", Tahoma, sans-serif; background: #eef2f5; color: #2c3e50; }
     #map { width: 100%; height: 65vh; border-bottom: 3px solid #ddd; }
     .card { background: #fff; border-radius: 14px; box-shadow: 0 6px 14px rgba(0,0,0,.08); padding: 18px; margin: 16px; }
-    .header-panel { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-    .header-panel h1 { margin: 0; font-size: 1.4rem; color: #2c3e50; }
-    .header-panel .controls { display: flex; gap: 10px; }
-    .header-panel button { padding: 8px 12px; border-radius: 8px; border: none; cursor: pointer; background: #3498db; color: #fff; font-weight: 600; transition: 0.2s; }
+    .header-panel { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap:12px; }
+    .header-panel h1 { margin: 0; font-size: 1.2rem; color: #2c3e50; }
+    .header-panel .controls { display: flex; gap: 8px; align-items:center; }
+    .header-panel button { padding: 8px 12px; border-radius: 8px; border: none; cursor: pointer; background: #3498db; color: #fff; font-weight: 600; transition: 0.15s; }
     .header-panel button:hover { background: #2980b9; }
-    h2 { margin: 16px 0 10px; font-size: 1.1rem; color: #34495e; border-left: 4px solid #3498db; padding-left: 8px; }
+    .btn-record { background: #e74c3c; }
+    .btn-record.recording { background: #c0392b; box-shadow: 0 4px 12px rgba(231,76,60,0.25); transform: translateY(-1px); }
+    h2 { margin: 16px 0 10px; font-size: 1.05rem; color: #34495e; border-left: 4px solid #3498db; padding-left: 8px; }
     .grid { display: grid; gap: 12px; }
     .three { grid-template-columns: repeat(3, 1fr); }
-    .btn { width: 100%; padding: 12px; background: #3498db; color: #fff; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; margin-top: 14px; transition: 0.2s; }
+    .btn { width: 100%; padding: 12px; background: #3498db; color: #fff; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; margin-top: 14px; transition: 0.15s; }
     .btn:hover { background: #2980b9; }
     .resultado { margin-top: 14px; padding: 14px; border-radius: 10px; border: 2px solid #3498db44; background: #f9fbfd; line-height: 1.5; }
     .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
-    .actions button { flex: 1; padding: 12px; border-radius: 10px; border: none; cursor: pointer; font-weight: 600; transition: 0.2s; }
+    .actions button { flex: 1; padding: 12px; border-radius: 10px; border: none; cursor: pointer; font-weight: 600; transition: 0.15s; }
     .pdf { background: #27ae60; color: #fff; }
     .pdf:hover { background: #1e874b; }
     .wa { background: #25d366; color: #fff; }
     .wa:hover { background: #1eb346; }
+    .small { font-size: 0.9rem; color:#6c7a89; }
   </style>
 </head>
 <body>
+
   <div id="map"></div>
 
   <div class="card">
@@ -37,13 +41,13 @@
       <div class="controls">
         <button id="btnUndo">Desfazer ponto</button>
         <button id="btnClear">Limpar</button>
+        <button id="btnRecord" class="btn-record">Gravar Movimento</button>
       </div>
     </div>
 
     <h2>Geometria da Curva (3 pontos)</h2>
-    <p style="color:#7f8c8d;font-size:0.9rem;margin-top:0;">
-      Clique 3 pontos no mapa: início, meio (mais afastado) e fim.
-    </p>
+    <p class="small">Você pode clicar 3 pontos manualmente ou gravar movimento e o app escolherá automaticamente os 3 pontos: início, ponto mais afastado da corda e fim.</p>
+
     <div id="geomResults" class="resultado">
       <p style="color:#95a5a6;">Aguardando pontos no mapa...</p>
     </div>
@@ -87,132 +91,332 @@
     </div>
   </div>
 
+  <!-- Leaflet -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <!-- jsPDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
   <script>
-    // Inicializa mapa
+    // --- Inicializa mapa (satélite Esri) ---
     let map = L.map('map').setView([-15.78, -47.93], 14);
 
-    // SATÉLITE (Esri World Imagery)
     L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      {
-        maxZoom: 20,
-        attribution: 'Tiles © Esri — Source: Esri, NASA, NGA, USGS'
-      }
+      { maxZoom: 20, attribution: 'Tiles © Esri — Source: Esri, NASA, NGA, USGS' }
     ).addTo(map);
 
-    // Alta precisão + rastreamento contínuo
+    // --- Ícone / bolinha vermelha para a posição do usuário ---
+    // Usamos circleMarker para ser uma bolinha simples
+    function createUserCircle(latlng) {
+      return L.circleMarker(latlng, {
+        radius: 7,
+        fillColor: "#e74c3c",
+        color: "#c0392b",
+        weight: 1,
+        opacity: 1,
+        fillOpacity: 0.9
+      });
+    }
+
+    // --- Variáveis de rastreamento ---
+    window.liveMarker = null;        // bolinha da posição atual
+    let recording = false;
+    let track = [];                  // array de {lat,lng}
+    let trackLine = null;            // polyline do caminho gravado
+    let recordedMarkerGroup = L.layerGroup().addTo(map); // marcadores gerados pela gravação/auto-pontos
+    let manualMarkers = [];          // marcadores adicionados manualmente
+    let curveLine = null;            // polyline que liga os 3 pontos da curva
+
+    // --- Geolocalização: alta precisão, atualização inicial e watch ---
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(pos => {
-        let { latitude, longitude } = pos.coords;
+        const { latitude, longitude } = pos.coords;
         map.setView([latitude, longitude], 17);
-        L.marker([latitude, longitude]).addTo(map).bindPopup("Você está aqui").openPopup();
-      }, 
-      err => console.error(err),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 
-      navigator.geolocation.watchPosition(pos => {
-        let { latitude, longitude } = pos.coords;
+        // criar bolinha inicial
         if (!window.liveMarker) {
-          window.liveMarker = L.marker([latitude, longitude], { opacity: 0.9 }).addTo(map);
+          window.liveMarker = createUserCircle([latitude, longitude]).addTo(map);
+          window.liveMarker.bindPopup("Você está aqui");
         } else {
           window.liveMarker.setLatLng([latitude, longitude]);
         }
-      }, 
-      err => console.error(err),
-      { enableHighAccuracy: true });
+      }, err => console.error("getCurrentPosition:", err),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+
+      // watchPosition atualiza a bolinha
+      navigator.geolocation.watchPosition(pos => {
+        const { latitude, longitude } = pos.coords;
+
+        if (!window.liveMarker) {
+          window.liveMarker = createUserCircle([latitude, longitude]).addTo(map);
+          window.liveMarker.bindPopup("Você está aqui");
+        } else {
+          window.liveMarker.setLatLng([latitude, longitude]);
+        }
+
+        // se estiver gravando, acrescenta ao track e atualiza polyline
+        if (recording) {
+          track.push({ lat: latitude, lng: longitude });
+          updateTrackLine();
+        }
+
+      }, err => console.error("watchPosition:", err),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+    } else {
+      console.warn("Geolocation não suportado pelo navegador.");
     }
 
-    let points = [], markers = [];
-
-    function distance(a, b) {
+    // --- Funções de distância e projeção (aproximação plana com correção cos(lat)) ---
+    function toXY(pt) {
+      // converte {lat,lng} para coordenadas planas (metros) usando equirectangular aproximado
+      const R = 6371000;
+      const latRad = pt.lat * Math.PI/180;
+      const x = pt.lng * Math.PI/180 * R * Math.cos(latRad); // approx using local lat
+      const y = pt.lat * Math.PI/180 * R;
+      return { x, y };
+    }
+    function distanceMeters(a,b) {
+      // usa aproximação semelhante à do código original (mais estável em pequenas distâncias)
       const R = 6371000;
       const dLat = (b.lat - a.lat) * Math.PI/180;
       const dLng = (b.lng - a.lng) * Math.PI/180;
       const lat1 = a.lat * Math.PI/180, lat2 = b.lat * Math.PI/180;
-      const x = dLng * Math.cos((lat1 + lat2)/2), y = dLat;
+      const x = dLng * Math.cos((lat1 + lat2)/2);
+      const y = dLat;
       return Math.sqrt(x*x + y*y) * R;
     }
-    function midpoint(a, b) { return { lat: (a.lat + b.lat)/2, lng: (a.lng + b.lng)/2 }; }
+
+    // Distância perpendicular (em metros) do ponto p à reta definida por a-b (aprox plana)
+    function perpDistanceToLine(a, b, p) {
+      // converter para coordenadas XY em metros usando média de latitude para melhor precisão
+      const latAvg = (a.lat + b.lat + p.lat)/3 * Math.PI/180;
+      const R = 6371000;
+      const ax = a.lng * Math.PI/180 * R * Math.cos(latAvg);
+      const ay = a.lat * Math.PI/180 * R;
+      const bx = b.lng * Math.PI/180 * R * Math.cos(latAvg);
+      const by = b.lat * Math.PI/180 * R;
+      const px = p.lng * Math.PI/180 * R * Math.cos(latAvg);
+      const py = p.lat * Math.PI/180 * R;
+
+      const vx = bx - ax, vy = by - ay;
+      const wx = px - ax, wy = py - ay;
+      const vlen2 = vx*vx + vy*vy;
+      if (vlen2 === 0) return Math.sqrt(wx*wx + wy*wy);
+      // proj scalar t
+      const t = (wx*vx + wy*vy) / vlen2;
+      // projection point on segment (we want distance to infinite line, but segment is okay too)
+      const projx = ax + t * vx;
+      const projy = ay + t * vy;
+      const dx = px - projx, dy = py - projy;
+      return Math.sqrt(dx*dx + dy*dy);
+    }
+
+    // --- Track polyline update ---
+    function updateTrackLine() {
+      if (trackLine) map.removeLayer(trackLine);
+      if (track.length > 0) {
+        const latlngs = track.map(p => [p.lat, p.lng]);
+        trackLine = L.polyline(latlngs, { color: '#2980b9', weight: 3, opacity: 0.8 }).addTo(map);
+      }
+    }
+
+    // --- Seleção automática dos 3 pontos a partir do track ---
+    function selectThreePointsFromTrack() {
+      if (track.length < 3) return null;
+      const start = track[0];
+      const end = track[track.length - 1];
+
+      // encontrar o ponto com máxima distância perpendicular à corda start-end
+      let maxDist = -1;
+      let midPointIdx = 0;
+      for (let i = 0; i < track.length; i++) {
+        const p = track[i];
+        const d = perpDistanceToLine(start, end, p);
+        if (d > maxDist) { maxDist = d; midPointIdx = i; }
+      }
+      const mid = track[midPointIdx];
+
+      return { start, mid, end, midIndex: midPointIdx, maxDist };
+    }
+
+    // --- Função que desenha os 3 pontos selecionados e calcula a geometria ---
+    function plotAndCalculateFromThree(p1, p2, p3) {
+      // limpar marcadores anteriores gerados automaticamente
+      recordedMarkerGroup.clearLayers();
+      if (curveLine) { map.removeLayer(curveLine); curveLine = null; }
+
+      // marcadores para os 3 pontos (cores diferentes para destaque)
+      const mStart = L.circleMarker([p1.lat, p1.lng], { radius:6, fillColor:'#2ecc71', color:'#27ae60', weight:1, fillOpacity:0.95 }).addTo(recordedMarkerGroup).bindPopup("Início");
+      const mMid   = L.circleMarker([p2.lat, p2.lng], { radius:6, fillColor:'#f1c40f', color:'#f39c12', weight:1, fillOpacity:0.95 }).addTo(recordedMarkerGroup).bindPopup("Meio (mais afastado)");
+      const mEnd   = L.circleMarker([p3.lat, p3.lng], { radius:6, fillColor:'#3498db', color:'#2980b9', weight:1, fillOpacity:0.95 }).addTo(recordedMarkerGroup).bindPopup("Fim");
+
+      // desenhar linha ligando os 3 pontos (polígono simples)
+      curveLine = L.polyline([[p1.lat,p1.lng],[p2.lat,p2.lng],[p3.lat,p3.lng]], { color:'#8e44ad', weight:2, dashArray:'6 6' }).addTo(map);
+
+      // atualizar points + markers para uso do cálculo existente
+      // remover marcadores manuais (se houver)
+      manualMarkers.forEach(m=>map.removeLayer(m));
+      manualMarkers = [];
+      // criar "pontos" como os objetos LatLng esperados pelo cálculo
+      points = [ L.latLng(p1.lat,p1.lng), L.latLng(p2.lat,p2.lng), L.latLng(p3.lat,p3.lng) ];
+
+      // exibir popup no marcador do meio com a distância sagita
+      calcularGeometria(); // atualiza div geomResults
+    }
+
+    // --- Cálculo de geometria (mantido do original, com proteção contra divisão por zero) ---
+    let points = []; // pode ser preenchido pelos cliques manuais ou pela gravação automática
+    let markers = []; // marcadores manipulados por cliques manuais
 
     function calcularGeometria() {
-      const [p1, p2, p3] = points;
-      const c = distance(p1, p3);
-      const s = distance(p2, midpoint(p1, p3));
-      const R = (c*c)/(8*s) + s/2;
-      const delta = 2 * Math.asin(c/(2*R)) * (180/Math.PI);
+      if (!points || points.length < 3) return;
+      const p1 = points[0], p2 = points[1], p3 = points[2];
+      const c = distanceMeters(p1, p3); // corda
+      const s = distanceMeters(p2, midpointLatLng(p1,p3)); // sagita
+      if (s === 0) {
+        document.getElementById('geomResults').innerHTML = '<p style="color:#e74c3c;">Não foi possível calcular (sagita = 0). Escolha outros pontos.</p>';
+        return { R:Infinity };
+      }
+      const R = (c*c)/(8*s) + s/2; // raio
+      const delta = 2 * Math.asin(c/(2*R)) * (180/Math.PI); // ângulo central em graus
       const arco = (Math.PI * R * delta) / 180;
       const grau = 5729.58 / R;
       const tang = R * Math.tan((delta/2) * Math.PI/180);
       const L = 2 * R * Math.sin((delta/2) * Math.PI/180);
 
-      document.getElementById("geomResults").innerHTML = `
-        <b>Raio (R):</b> ${R.toFixed(2)} m<br>
-        <b>Ângulo central (Δ):</b> ${delta.toFixed(2)}°<br>
-        <b>Grau de curva (D):</b> ${grau.toFixed(2)}°<br>
-        <b>Comprimento do arco:</b> ${arco.toFixed(2)} m<br>
-        <b>Sagita (flecha):</b> ${s.toFixed(2)} m<br>
-        <b>Corda (C):</b> ${c.toFixed(2)} m<br>
-        <b>Tangente (T):</b> ${tang.toFixed(2)} m<br>
-        <b>Desenvolvimento (L):</b> ${L.toFixed(2)} m
-      `;
+      document.getElementById('geomResults').innerHTML =
+        `<b>Raio (R):</b> ${R.toFixed(2)} m<br>
+         <b>Ângulo central (Δ):</b> ${delta.toFixed(2)}°<br>
+         <b>Grau de curva (D):</b> ${grau.toFixed(2)}°<br>
+         <b>Comprimento do arco:</b> ${arco.toFixed(2)} m<br>
+         <b>Sagita (flecha):</b> ${s.toFixed(2)} m<br>
+         <b>Corda (C):</b> ${c.toFixed(2)} m<br>
+         <b>Tangente (T):</b> ${tang.toFixed(2)} m<br>
+         <b>Desenvolvimento (L):</b> ${L.toFixed(2)} m`;
 
       return { R, delta, grau, arco, s, c, tang, L };
     }
 
+    // calcula midpoint latlng
+    function midpointLatLng(a,b) {
+      return { lat: (a.lat + b.lat)/2, lng: (a.lng + b.lng)/2 };
+    }
+
+    // --- Interação manual com cliques no mapa (mantida) ---
     map.on('click', e => {
       if (points.length >= 3) return;
-      points.push(e.latlng);
-      let mk = L.marker(e.latlng).addTo(map);
+
+      const latlng = e.latlng;
+      points.push(latlng);
+      const mk = L.marker(latlng).addTo(map);
       markers.push(mk);
-      if (points.length === 3) calcularGeometria();
+
+      if (points.length === 3) {
+        calcularGeometria();
+      }
     });
 
+    // Desfazer último ponto manual
     document.getElementById('btnUndo').onclick = () => {
-      if (points.length) {
+      if (markers.length) {
         map.removeLayer(markers.pop());
         points.pop();
         document.getElementById('geomResults').innerHTML = '<p style="color:#95a5a6;">Aguardando pontos no mapa...</p>';
       }
     };
 
+    // Limpar tudo (manual + gravação)
     document.getElementById('btnClear').onclick = () => {
+      // remover manual markers
       markers.forEach(m => map.removeLayer(m));
-      points = [];
       markers = [];
+      points = [];
+      // limpar track e markers automáticos
+      if (trackLine) { map.removeLayer(trackLine); trackLine = null; }
+      track = [];
+      recordedMarkerGroup.clearLayers();
+      if (curveLine) { map.removeLayer(curveLine); curveLine = null; }
       document.getElementById('geomResults').innerHTML = '<p style="color:#95a5a6;">Aguardando pontos no mapa...</p>';
       document.getElementById('resultado').innerHTML = '<p style="color:#95a5a6;">Resultados aparecerão aqui.</p>';
     };
 
+    // --- Botão de gravação: inicia / para gravação ---
+    const btnRecord = document.getElementById('btnRecord');
+    btnRecord.addEventListener('click', () => {
+      recording = !recording;
+      if (recording) {
+        // começar gravação
+        btnRecord.textContent = "Parar Gravação";
+        btnRecord.classList.add('recording');
+        track = []; // reset
+        if (trackLine) { map.removeLayer(trackLine); trackLine = null; }
+        // opcional: adicionar primeiro ponto se liveMarker existir
+        if (window.liveMarker) {
+          const latlng = window.liveMarker.getLatLng();
+          track.push({ lat: latlng.lat, lng: latlng.lng });
+        }
+      } else {
+        // parar gravação -> processar track
+        btnRecord.textContent = "Gravar Movimento";
+        btnRecord.classList.remove('recording');
+        updateTrackLine(); // desenha a linha final
+        const sel = selectThreePointsFromTrack();
+        if (sel) {
+          plotAndCalculateFromThree(sel.start, sel.mid, sel.end);
+          // ajustar view para incluir os pontos e a trilha
+          const bounds = L.latLngBounds(track.map(p=>[p.lat,p.lng]).concat([[sel.start.lat,sel.start.lng],[sel.mid.lat,sel.mid.lng],[sel.end.lat,sel.end.lng]]));
+          map.fitBounds(bounds.pad(0.2));
+        } else {
+          alert("Track curto: não há pontos suficientes para selecionar os 3 pontos automaticamente.");
+        }
+      }
+    });
+
+    // --- Calcular velocidade segura (mesma lógica que antes) ---
     document.getElementById('btnCalc').onclick = () => {
-      if (points.length < 3) return;
-      let { R } = calcularGeometria();
-      let atrito = parseFloat(document.getElementById('atrito').value);
-      let veiculo = parseFloat(document.getElementById('veiculo').value);
-      let margem = parseFloat(document.getElementById('margem').value);
-      let g = 9.81;
-
-      let v = Math.sqrt(atrito * g * R) * veiculo * margem;
-      let vKmh = Math.floor((v * 3.6) / 5) * 5;
-
+      if (!points || points.length < 3) {
+        alert("É preciso definir 3 pontos da curva (manual ou via gravação) antes de calcular a velocidade.");
+        return;
+      }
+      const res = calcularGeometria();
+      if (!res || !isFinite(res.R)) return;
+      const atrito = parseFloat(document.getElementById('atrito').value);
+      const veiculo = parseFloat(document.getElementById('veiculo').value);
+      const margem = parseFloat(document.getElementById('margem').value);
+      const g = 9.81;
+      const v = Math.sqrt(atrito * g * res.R) * veiculo * margem;
+      const vKmh = Math.floor((v * 3.6) / 5) * 5;
       document.getElementById('resultado').innerHTML = `<b>Velocidade Recomendada:</b> ${vKmh} km/h`;
     };
 
+    // --- PDF ---
     document.getElementById('btnPDF').onclick = () => {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
-      doc.text("Calcular Curva - Resultado", 10, 10);
-      doc.text(document.getElementById('geomResults').innerText, 10, 20);
-      doc.text(document.getElementById('resultado').innerText, 10, 120);
+      doc.setFontSize(14);
+      doc.text("Calcular Curva - Resultado", 10, 14);
+      const geomText = document.getElementById('geomResults').innerText || "";
+      const resText = document.getElementById('resultado').innerText || "";
+      doc.setFontSize(10);
+      // quebrar linhas longas automaticamente simples
+      const linesGeom = doc.splitTextToSize(geomText, 180);
+      doc.text(linesGeom, 10, 28);
+      doc.text(resText, 10, 120);
       doc.save("resultado-curva.pdf");
     };
 
+    // --- WhatsApp ---
     document.getElementById('btnWA').onclick = () => {
       const texto = `Calcular Curva:%0A${document.getElementById('geomResults').innerText}%0A${document.getElementById('resultado').innerText}`;
       window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
     };
+
+    // --- Utilidade: mostrar console info quando track longo ---
+    function printTrackSummary() {
+      if (!track || track.length === 0) return;
+      console.log(`Track points: ${track.length}. Start: ${track[0].lat},${track[0].lng}. End: ${track[track.length-1].lat},${track[track.length-1].lng}`);
+    }
+
   </script>
 </body>
 </html>
